@@ -25,10 +25,12 @@ import net.minecraftforge.snowblower.util.HashFunction;
 import net.minecraftforge.snowblower.util.Tools;
 import net.minecraftforge.snowblower.util.Util;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.ListBranchCommand;
 import org.eclipse.jgit.api.ResetCommand.ResetType;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.errors.RepositoryNotFoundException;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.jetbrains.annotations.Nullable;
@@ -41,6 +43,8 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.sql.Date;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -243,8 +247,30 @@ public class Generator implements AutoCloseable {
         }
         attemptPush("Pushing remaining versions to remote."); // In case there are any remaining versions to push
 
-        if (toGenerate.isEmpty())
+        if (toGenerate.isEmpty()) {
             this.logger.accept("No versions to process");
+        } else {
+            final Function<RevCommit, String> linkGetter = git.remoteList().call().stream()
+                    .flatMap(cfg -> cfg.getURIs().stream())
+                    .filter(it -> it.getHost().equals("github.com") && it.getPath().endsWith(".git"))
+                    .map(uri -> uri.getHost() + uri.getPath().substring(0, uri.getPath().length() - 4))
+                    .findFirst().<Function<RevCommit, String>>map(base -> (commit) -> "https://" + base + "/tree/" + commit.getId().getName()).orElse(null);
+
+            if (linkGetter != null) {
+                final StringBuilder readmeCommits = new StringBuilder();
+
+                git.log().setMaxCount(Integer.MAX_VALUE).call().forEach(revCommit -> {
+                    if (revCommit.getCommitterIdent().getName().equals("SnowBlower") && !revCommit.getFullMessage().equals("Update README") && !revCommit.getFullMessage().equals("Initial commit")) {
+                        readmeCommits.append("- [%s](%s)  \n".formatted(revCommit.getShortMessage(), linkGetter.apply(revCommit)));
+                    }
+                });
+
+                Files.writeString(output.resolve("README.md"), readmeCommits.toString());
+                git.add().addFilepattern("README.md").call();
+                Util.commit(git, "Update README", Date.from(Instant.now()));
+                attemptPush("Pushed README update");
+            }
+        }
     }
 
     private void attemptPush(String message) throws GitAPIException {

@@ -40,6 +40,7 @@ import com.google.gson.JsonDeserializer;
 import net.minecraftforge.snowblower.Main;
 import net.minecraftforge.snowblower.data.Version;
 import net.minecraftforge.srgutils.MinecraftVersion;
+import org.eclipse.jgit.revwalk.RevCommit;
 import org.jetbrains.annotations.Nullable;
 
 public class Util {
@@ -210,10 +211,10 @@ public class Util {
         }
     }
 
-    public static void commit(Git git, String message, Date time) throws GitAPIException {
+    public static RevCommit commit(Git git, String message, Date time) throws GitAPIException {
         var snowblower = new PersonIdent("SnowBlower", "snow@blower.com");
         var timed = new PersonIdent(snowblower, time);
-        git.commit()
+        return git.commit()
             .setMessage(message)
             .setAuthor(timed)
             .setCommitter(timed)
